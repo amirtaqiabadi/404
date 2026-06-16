@@ -1,0 +1,13 @@
+{
+  "appId": "ir.notfound.game",
+  "appName": "NotFound",
+  "webDir": "www",
+  "backgroundColor": "#eef2f9ff",
+  "android": {
+    "backgroundColor": "#eef2f9ff"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#eef2f9ff"
+  }
+}

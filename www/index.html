@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#eef2f9">
+  <title>404</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="cv"></canvas>
+
+  <button id="restart" title="Restart (R)">⟳</button>
+  <div id="lb"></div>
+
+  <!-- On-screen D-pad (touch devices) -->
+  <div id="pad" aria-hidden="true">
+    <button class="pad-btn" data-dir="up">▲</button>
+    <button class="pad-btn" data-dir="left">◀</button>
+    <button class="pad-btn" data-dir="right">▶</button>
+    <button class="pad-btn" data-dir="down">▼</button>
+  </div>
+
+  <script src="js/game.js"></script>
+</body>
+</html>
