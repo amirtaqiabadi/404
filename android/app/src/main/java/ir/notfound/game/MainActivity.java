@@ -1,4 +1,4 @@
-package com.bazdid.game404;
+package ir.notfound.game;
 
 import com.getcapacitor.BridgeActivity;
 

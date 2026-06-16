@@ -1,6 +1,6 @@
 {
-  "appId": "com.bazdid.game404",
-  "appName": "404",
+  "appId": "ir.notfound.game",
+  "appName": "NotFound",
   "webDir": "www",
   "backgroundColor": "#eef2f9ff",
   "android": {

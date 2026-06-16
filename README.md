@@ -19,11 +19,12 @@
 ├── package.json
 └── .github/workflows/    # CI برای ساخت APK و iOS
     ├── android.yml
-    └── ios.yml
+    ├── ios.yml
+    └── ios-release.yml
 ```
 
-- **appId:** `com.bazdid.game404`
-- **appName:** `404`
+- **appId:** `ir.notfound.game`  (نکته: در اندروید هیچ بخشی از appId نمی‌تواند با عدد شروع شود، برای همین از `404` در شناسه استفاده نشد)
+- **appName (نام نمایشی):** `NotFound`
 - **webDir:** `www`
 
 برای تغییر نام/شناسهٔ اپ، مقادیر `capacitor.config.json` را عوض کنید و سپس
@@ -89,10 +90,23 @@ Run بزنید یا از مسیر **Product → Archive** یک `.ipa` بسازی
 
 - **Build Android APK** → روی `ubuntu-latest`، یک `app-debug.apk` آمادهٔ نصب می‌سازد
   و به‌صورت artifact آپلود می‌کند.
-- **Build iOS App** → روی `macos-14`، یک `.app` امضانشده برای شبیه‌ساز می‌سازد.
-  (برای `.ipa` امضاشده باید گواهی‌های امضا را به‌صورت secret اضافه کنید.)
+- **Build iOS App** → روی `macos-14`، یک `.app` امضانشده برای شبیه‌ساز می‌سازد (بدون secret).
+- **Build iOS IPA (signed)** → یک `.ipa` امضاشدهٔ قابل‌توزیع می‌سازد. فقط دستی از تب
+  **Actions → Run workflow** اجرا می‌شود و به secretهای زیر نیاز دارد.
 
 بعد از اجرای موفق، فایل خروجی را از بخش **Artifacts** همان run دانلود کنید.
+
+### secretهای لازم برای `.ipa` امضاشده
+
+در `Settings → Secrets and variables → Actions` این‌ها را اضافه کنید (نیازمند حساب Apple Developer):
+
+| Secret | توضیح |
+|---|---|
+| `IOS_CERTIFICATE_BASE64` | گواهی توزیع `.p12` به‌صورت base64 (`base64 -i cert.p12`) |
+| `IOS_CERTIFICATE_PASSWORD` | رمز فایل `.p12` |
+| `IOS_PROVISIONING_PROFILE_BASE64` | پروفایل `.mobileprovision` به‌صورت base64 |
+| `APPLE_TEAM_ID` | شناسهٔ ۱۰ کاراکتری Team در Apple Developer |
+| `IOS_EXPORT_METHOD` | یکی از `app-store` / `ad-hoc` / `development` / `enterprise` |
 
 > چرا CI؟ ساخت APK به Android SDK و ساخت iOS به macOS نیاز دارد؛ این محیط‌ها روی
 > رانرهای گیت‌هاب فراهم‌اند، پس قابل‌اعتمادترین راهِ گرفتنِ خروجیِ APK و iOS همین است.
