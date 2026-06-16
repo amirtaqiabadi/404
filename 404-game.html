@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>404</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#eef2f9;
+    font-family:'Segoe UI',system-ui,-apple-system,Tahoma,Arial,sans-serif;}
+  canvas{position:fixed;inset:0;display:block;}
+  #lb{position:fixed;top:14px;right:14px;z-index:3;display:flex;flex-direction:column;gap:2px;
+      min-width:150px;pointer-events:none;}
+  #lb .hdr{display:flex;justify-content:flex-end;align-items:center;gap:6px;
+      font-size:11px;letter-spacing:.16em;color:#475569;text-transform:uppercase;margin-bottom:3px;
+      text-shadow:0 0 4px #fff,0 1px 2px #fff;}
+  .lbrow{display:flex;align-items:center;gap:8px;padding:2px 6px;border-radius:8px;transition:.2s;}
+  .lbrow.me{background:rgba(37,99,235,.08);}
+  .lbrow.me .lbname,.lbrow.me .lbval{font-weight:800;}
+  .lbdot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 6px currentColor;flex:none;}
+  .lbname{flex:1;font-size:13px;color:#1f2a44;text-shadow:0 0 4px #fff,0 1px 2px #fff;white-space:nowrap;}
+  .lbval{font-size:14px;font-weight:700;color:#1f2a44;text-shadow:0 0 4px #fff,0 1px 2px #fff;
+      font-variant-numeric:tabular-nums;}
+  #restart{position:fixed;top:14px;left:14px;z-index:3;width:40px;height:40px;border-radius:11px;
+      border:1px solid rgba(31,42,68,.14);background:rgba(255,255,255,.55);backdrop-filter:blur(5px);
+      color:#1f2a44;font-size:18px;line-height:1;cursor:pointer;transition:.15s;}
+  #restart:hover{background:#fff;color:#2563eb;}
+  #restart:focus-visible{outline:2px solid #2563eb;outline-offset:2px;}
+</style>
+</head>
+<body>
+  <canvas id="cv"></canvas>
+  <button id="restart" title="Restart (R)">⟳</button>
+  <div id="lb"></div>
+
+<script>
+"use strict";
+/* ============ config ============ */
+const CELL = 20;
+const STEP_MS = 150;
+const DENSITY = 0.18;
+const B = 110, WMARGIN = 6, PLAZA = 2, WORD_PROB = 0.72;
+const PATH_MARGIN = 10, PATH_CAP = 1200;
+const RECOMP_PER_STEP = 2;              // stagger replanning across steps (keeps frames cheap)
+const HOUSE_COL = "#7c3aed";
+const COLORS = { player:"#2563eb", bfs:"#dc2626", dfs:"#16a34a", astar:"#d97706",
+                 greedy:"#0891b2", dijkstra:"#db2777", bibfs:"#65a30d" };
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let VW, VH, DPR;
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio||1);
+  VW = window.innerWidth; VH = window.innerHeight;
+  cv.width = Math.floor(VW*DPR); cv.height = Math.floor(VH*DPR);
+  cv.style.width = VW+"px"; cv.style.height = VH+"px";
+}
+window.addEventListener("resize", resize);
+
+/* ============ 5x7 pixel font ============ */
+const FONT = {
+  "0":["01110","10001","10011","10101","11001","10001","01110"],
+  "1":["00100","01100","00100","00100","00100","00100","01110"],
+  "2":["01110","10001","00001","00010","00100","01000","11111"],
+  "3":["11110","00001","00001","01110","00001","00001","11110"],
+  "4":["00010","00110","01010","10010","11111","00010","00010"],
+  "5":["11111","10000","11110","00001","00001","10001","01110"],
+  "6":["00110","01000","10000","11110","10001","10001","01110"],
+  "7":["11111","00001","00010","00100","01000","01000","01000"],
+  "8":["01110","10001","10001","01110","10001","10001","01110"],
+  "9":["01110","10001","10001","01111","00001","00010","01100"],
+  "A":["01110","10001","10001","11111","10001","10001","10001"],
+  "B":["11110","10001","10001","11110","10001","10001","11110"],
+  "C":["01110","10001","10000","10000","10000","10001","01110"],
+  "D":["11110","10001","10001","10001","10001","10001","11110"],
+  "E":["11111","10000","10000","11110","10000","10000","11111"],
+  "F":["11111","10000","10000","11110","10000","10000","10000"],
+  "G":["01110","10001","10000","10111","10001","10001","01111"],
+  "H":["10001","10001","10001","11111","10001","10001","10001"],
+  "I":["11111","00100","00100","00100","00100","00100","11111"],
+  "J":["00111","00010","00010","00010","00010","10010","01100"],
+  "K":["10001","10010","10100","11000","10100","10010","10001"],
+  "L":["10000","10000","10000","10000","10000","10000","11111"],
+  "M":["10001","11011","10101","10101","10001","10001","10001"],
+  "N":["10001","11001","10101","10011","10001","10001","10001"],
+  "O":["01110","10001","10001","10001","10001","10001","01110"],
+  "P":["11110","10001","10001","11110","10000","10000","10000"],
+  "Q":["01110","10001","10001","10001","10101","10010","01101"],
+  "R":["11110","10001","10001","11110","10100","10010","10001"],
+  "S":["01111","10000","10000","01110","00001","00001","11110"],
+  "T":["11111","00100","00100","00100","00100","00100","00100"],
+  "U":["10001","10001","10001","10001","10001","10001","01110"],
+  "V":["10001","10001","10001","10001","10001","01010","00100"],
+  "W":["10001","10001","10001","10101","10101","11011","10001"],
+  "X":["10001","10001","01010","00100","01010","10001","10001"],
+  "Y":["10001","10001","01010","00100","00100","00100","00100"],
+  "Z":["11111","00001","00010","00100","01000","10000","11111"]
+};
+const WORDS = ["BAZDIDLY","LISTINGS","HOMES","NOTFOUND","RENT","404"];
+const WORD_SCALE = { "404":1, "BAZDIDLY":1, "LISTINGS":1, "HOMES":1, "NOTFOUND":1, "RENT":1 };
+const wordW = (w,s)=>(w.length*5 + (w.length-1))*s;
+
+/* ============ state ============ */
+let SEED; const blockCache = new Map();
+let entities, player, agents, target, targetVersion, recomputeCursor;
+let stepping, stepT, camX, camY, scores, lastFrame;
+
+/* ============ helpers ============ */
+const key = (x,y)=>x+","+y;
+const lerp = (a,b,t)=>a+(b-a)*t;
+const cellPix = (x,y)=>({x:x*CELL+CELL/2, y:y*CELL+CELL/2});
+function rr(x,y,w,h,rad){
+  ctx.beginPath(); ctx.moveTo(x+rad,y);
+  ctx.arcTo(x+w,y,x+w,y+h,rad); ctx.arcTo(x+w,y+h,x,y+h,rad);
+  ctx.arcTo(x,y+h,x,y,rad); ctx.arcTo(x,y,x+w,y,rad); ctx.closePath();
+}
+
+/* ============ procedural infinite world ============ */
+function hashInt(x,y,salt){
+  let h = Math.imul(x|0, 0x27d4eb2d) ^ ((salt^SEED)|0);
+  h = Math.imul(h ^ (y|0), 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function blockWord(bx,by){
+  const k=bx+","+by;
+  if(blockCache.has(k)) return blockCache.get(k);
+  let desc=null;
+  if(bx===0 && by===0){
+    const word="404", scale=WORD_SCALE[word], w=wordW(word,scale), h=7*scale;
+    desc={word,scale,w,h,lx:Math.floor((B-w)/2),ly:Math.floor((B-h)/2)};
+  } else if(hashInt(bx,by,101) < WORD_PROB){
+    const word=WORDS[(hashInt(bx,by,202)*WORDS.length)|0];
+    const scale=WORD_SCALE[word], w=wordW(word,scale), h=7*scale;
+    const lx=WMARGIN+Math.floor(hashInt(bx,by,303)*Math.max(1,(B-w-2*WMARGIN)));
+    const ly=WMARGIN+Math.floor(hashInt(bx,by,404)*Math.max(1,(B-h-2*WMARGIN)));
+    desc={word,scale,w,h,lx,ly};
+  }
+  blockCache.set(k,desc); return desc;
+}
+function glyphPixel(word,scale,gx,gy){
+  const ci=Math.floor(gx/(6*scale));
+  if(ci<0||ci>=word.length) return false;
+  const within=gx-ci*6*scale;
+  if(within>=5*scale) return false;
+  const fy=Math.floor(gy/scale), fx=Math.floor(within/scale);
+  if(fy<0||fy>6) return false;
+  const g=FONT[word[ci]]; return g ? g[fy][fx]==="1" : false;
+}
+function wordStateAt(x,y){
+  const bx=Math.floor(x/B), by=Math.floor(y/B); const d=blockWord(bx,by);
+  if(!d) return 0;
+  const lx=x-bx*B, ly=y-by*B;
+  if(lx>=d.lx-PLAZA && lx<d.lx+d.w+PLAZA && ly>=d.ly-PLAZA && ly<d.ly+d.h+PLAZA){
+    const gx=lx-d.lx, gy=ly-d.ly;
+    if(gx>=0&&gx<d.w&&gy>=0&&gy<d.h&&glyphPixel(d.word,d.scale,gx,gy)) return 1;
+    return 2;
+  }
+  return 0;
+}
+const pillarAt = (x,y)=> hashInt(x,y,7) < DENSITY;
+function isPath(x,y){ const w=wordStateAt(x,y); if(w===1)return false; if(w===2)return true; return !pillarAt(x,y); }
+const isWord = (x,y)=> wordStateAt(x,y)===1;
+
+/* ============ bounded pathfinding ============ */
+class MinHeap{
+  constructor(){ this.a=[]; }
+  get size(){ return this.a.length; }
+  push(n){ const a=this.a; a.push(n); let i=a.length-1;
+    while(i>0){ const p=(i-1)>>1; if(a[p].f<=a[i].f)break; const t=a[p];a[p]=a[i];a[i]=t; i=p; } }
+  pop(){ const a=this.a; const top=a[0]; const last=a.pop();
+    if(a.length){ a[0]=last; let i=0; const n=a.length;
+      while(true){ let l=2*i+1,r=2*i+2,s=i; if(l<n&&a[l].f<a[s].f)s=l; if(r<n&&a[r].f<a[s].f)s=r; if(s===i)break;
+        const t=a[s];a[s]=a[i];a[i]=t; i=s; } }
+    return top; }
+}
+function bounds(s,g){
+  return {minX:Math.min(s[0],g[0])-PATH_MARGIN, maxX:Math.max(s[0],g[0])+PATH_MARGIN,
+          minY:Math.min(s[1],g[1])-PATH_MARGIN, maxY:Math.max(s[1],g[1])+PATH_MARGIN};
+}
+function neighbors(x,y,b){
+  const out=[]; const d=[[0,-1],[1,0],[0,1],[-1,0]];
+  for(const [dx,dy] of d){ const nx=x+dx,ny=y+dy;
+    if(nx>=b.minX&&nx<=b.maxX&&ny>=b.minY&&ny<=b.maxY&&isPath(nx,ny)) out.push([nx,ny]); }
+  return out;
+}
+function reconstruct(parent,start,goal){
+  let cur=key(goal[0],goal[1]); const sk=key(start[0],start[1]);
+  if(!(cur in parent)&&cur!==sk) return null;
+  const path=[];
+  while(cur!==undefined){ const p=cur.split(","); path.push({x:+p[0],y:+p[1]}); if(cur===sk)break; cur=parent[cur]; }
+  return path.reverse();
+}
+function bfs(start,goal){
+  const b=bounds(start,goal); const q=[start]; const parent={}; const seen=new Set([key(start[0],start[1])]);
+  parent[key(start[0],start[1])]=undefined; let head=0;
+  while(head<q.length){ if(seen.size>PATH_CAP)return null;
+    const [x,y]=q[head++]; if(x===goal[0]&&y===goal[1])return reconstruct(parent,start,goal);
+    for(const [nx,ny] of neighbors(x,y,b)){ const k=key(nx,ny); if(!seen.has(k)){seen.add(k);parent[k]=key(x,y);q.push([nx,ny]);} } }
+  return null;
+}
+function dfs(start,goal){
+  const b=bounds(start,goal); const st=[start]; const parent={}; const seen=new Set();
+  parent[key(start[0],start[1])]=undefined;
+  while(st.length){ if(seen.size>PATH_CAP)return null;
+    const [x,y]=st.pop(); const k=key(x,y); if(seen.has(k))continue; seen.add(k);
+    if(x===goal[0]&&y===goal[1])return reconstruct(parent,start,goal);
+    const nb=neighbors(x,y,b);
+    for(let i=nb.length-1;i>=0;i--){ const [nx,ny]=nb[i]; const nk=key(nx,ny);
+      if(!seen.has(nk)){ if(!(nk in parent))parent[nk]=k; st.push([nx,ny]); } } }
+  return null;
+}
+function bestFirst(start,goal,useG,useH){ // g-cost and/or heuristic
+  const b=bounds(start,goal); const h=(x,y)=>Math.abs(x-goal[0])+Math.abs(y-goal[1]);
+  const heap=new MinHeap(); const f0=(useG?0:0)+(useH?h(start[0],start[1]):0);
+  heap.push({x:start[0],y:start[1],f:f0});
+  const parent={}; parent[key(start[0],start[1])]=undefined;
+  const gS={}; gS[key(start[0],start[1])]=0; const closed=new Set();
+  while(heap.size){ if(closed.size>PATH_CAP)return null;
+    const cur=heap.pop(); const ck=key(cur.x,cur.y);
+    if(cur.x===goal[0]&&cur.y===goal[1])return reconstruct(parent,start,goal);
+    if(closed.has(ck))continue; closed.add(ck);
+    for(const [nx,ny] of neighbors(cur.x,cur.y,b)){ const nk=key(nx,ny); const ng=gS[ck]+1;
+      const prev = nk in gS ? gS[nk] : Infinity;
+      if(ng<prev){ gS[nk]=ng; parent[nk]=ck; heap.push({x:nx,y:ny,f:(useG?ng:0)+(useH?h(nx,ny):0)}); } } }
+  return null;
+}
+const astar    = (s,g)=>bestFirst(s,g,true,true);   // g + h (optimal, efficient)
+const dijkstra = (s,g)=>bestFirst(s,g,true,false);  // g only (optimal)
+const greedy   = (s,g)=>bestFirst(s,g,false,true);  // h only (fast, not optimal)
+function biBFS(start,goal){
+  if(start[0]===goal[0]&&start[1]===goal[1]) return [{x:start[0],y:start[1]}];
+  const b=bounds(start,goal);
+  const pf={}, pb={}; const sf=new Set([key(start[0],start[1])]), sb=new Set([key(goal[0],goal[1])]);
+  pf[key(start[0],start[1])]=undefined; pb[key(goal[0],goal[1])]=undefined;
+  let qf=[start], qb=[goal];
+  const join=(meet)=>{ const path=[]; let c=meet;
+    while(c!==undefined){ const p=c.split(","); path.push({x:+p[0],y:+p[1]}); c=pf[c]; } path.reverse();
+    c=pb[meet]; while(c!==undefined){ const p=c.split(","); path.push({x:+p[0],y:+p[1]}); c=pb[c]; } return path; };
+  while(qf.length&&qb.length){
+    if(sf.size+sb.size>PATH_CAP) return null;
+    const nqf=[];
+    for(const [x,y] of qf) for(const [nx,ny] of neighbors(x,y,b)){ const k=key(nx,ny);
+      if(!sf.has(k)){ sf.add(k); pf[k]=key(x,y); nqf.push([nx,ny]); if(sb.has(k))return join(k); } }
+    qf=nqf;
+    const nqb=[];
+    for(const [x,y] of qb) for(const [nx,ny] of neighbors(x,y,b)){ const k=key(nx,ny);
+      if(!sb.has(k)){ sb.add(k); pb[k]=key(x,y); nqb.push([nx,ny]); if(sf.has(k))return join(k); } }
+    qb=nqb;
+  }
+  return null;
+}
+
+/* ============ agents config ============ */
+const AGENTS = [
+  {type:"bfs",      name:"BFS",      algo:bfs},
+  {type:"dfs",      name:"DFS",      algo:dfs},
+  {type:"astar",    name:"A*",       algo:astar},
+  {type:"greedy",   name:"Greedy",   algo:greedy},
+  {type:"dijkstra", name:"Dijkstra", algo:dijkstra},
+  {type:"bibfs",    name:"Bi-BFS",   algo:biBFS}
+];
+
+/* ============ entities / spawning ============ */
+function makeEntity(x,y,type,algo){
+  return {cellX:x,cellY:y,nx:x,ny:y,type,algo,color:COLORS[type],
+          dir:[0,0],want:[0,0],path:null,pi:0,version:-1,failed:false,chomp:0};
+}
+const occupied = (x,y)=> entities && entities.some(e=>(e.cellX===x&&e.cellY===y)||(e.nx===x&&e.ny===y));
+function nearestOpen(px,py){
+  for(let r=1;r<60;r++) for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++){
+    if(Math.abs(dx)!==r&&Math.abs(dy)!==r) continue;
+    const x=px+dx,y=py+dy; if(isPath(x,y)&&!occupied(x,y)) return {x,y};
+  }
+  return {x:px,y:py};
+}
+function spawnNear(px,py,baseAng,minR,maxR){
+  for(let t=0;t<400;t++){
+    const ang=baseAng+(Math.random()-0.5)*1.4, rad=minR+Math.random()*(maxR-minR);
+    const x=px+Math.round(Math.cos(ang)*rad), y=py+Math.round(Math.sin(ang)*rad);
+    if((x===px&&y===py)||!isPath(x,y)||occupied(x,y)) continue;
+    if(bfs([px,py],[x,y])) return {x,y};
+  }
+  return nearestOpen(px,py);
+}
+function spawnHouse(){
+  const sx=player.cellX, sy=player.cellY;
+  const b={minX:sx-36,maxX:sx+36,minY:sy-36,maxY:sy+36};
+  const q=[[sx,sy]]; const dist={}; dist[key(sx,sy)]=0; const cands=[]; let head=0;
+  while(head<q.length && head<4000){
+    const [x,y]=q[head++]; const dd=dist[key(x,y)];
+    if(dd>=8 && dd<=18 && !occupied(x,y)) cands.push([x,y]);
+    if(dd>=18) continue;
+    for(const [nx,ny] of neighbors(x,y,b)){ const k=key(nx,ny); if(!(k in dist)){ dist[k]=dd+1; q.push([nx,ny]); } }
+  }
+  let cell = cands.length ? cands[(Math.random()*cands.length)|0] : null;
+  if(!cell){ const nb=neighbors(sx,sy,b); cell = nb.length ? nb[0] : [sx,sy]; }
+  target={x:cell[0],y:cell[1]}; targetVersion++;
+}
+
+const canGo = (e,d)=> (d[0]||d[1]) && isPath(e.cellX+d[0], e.cellY+d[1]);
+function planAgent(a){ a.path=a.algo([a.cellX,a.cellY],[target.x,target.y]); a.pi=0; a.version=targetVersion; a.failed=!a.path; }
+function advanceAgent(a){
+  if(a.path && a.path.length>a.pi+1){ a.pi++; const c=a.path[a.pi]; a.dir=[c.x-a.cellX,c.y-a.cellY]; a.nx=c.x; a.ny=c.y; }
+  else { a.nx=a.cellX; a.ny=a.cellY; }
+}
+function tryBeginStep(){
+  let nd=null;
+  if(canGo(player,player.want)) nd=player.want;
+  else if(canGo(player,player.dir)) nd=player.dir;
+  if(!nd) return false;
+  player.dir=nd; player.nx=player.cellX+nd[0]; player.ny=player.cellY+nd[1];
+  // staggered replanning: at most RECOMP_PER_STEP searches per step
+  let budget=RECOMP_PER_STEP;
+  for(let i=0;i<agents.length && budget>0;i++){
+    const a=agents[(recomputeCursor+i)%agents.length];
+    if(a.version!==targetVersion){ planAgent(a); budget--; }
+  }
+  recomputeCursor=(recomputeCursor+RECOMP_PER_STEP)%agents.length;
+  for(const a of agents) advanceAgent(a);
+  stepping=true; stepT=0; return true;
+}
+function handleArrivals(){
+  if(!target) return;
+  for(const e of entities){
+    if(e.cellX===target.x && e.cellY===target.y){ scores[e.type]++; updateHUD(); spawnHouse(); break; }
+  }
+}
+function update(dt){
+  if(stepping){
+    player.chomp+=dt; stepT+=dt/STEP_MS;
+    if(stepT>=1){ for(const e of entities){ e.cellX=e.nx; e.cellY=e.ny; } stepping=false; stepT=1;
+      handleArrivals(); tryBeginStep(); }
+  } else tryBeginStep();
+}
+
+/* ============ drawing ============ */
+function entPix(e){ const t=stepping?stepT:0; return {x:lerp(e.cellX,e.nx,t)*CELL+CELL/2, y:lerp(e.cellY,e.ny,t)*CELL+CELL/2}; }
+function drawBlock(x,y,word){
+  const px=x*CELL, py=y*CELL;
+  ctx.fillStyle = word ? "#5566f0" : "#9aa6bf"; rr(px+1,py+1,CELL-2,CELL-2,5); ctx.fill();
+  ctx.fillStyle = word ? "#7d8bff" : "#c2cbdd"; rr(px+1,py+1,CELL-2,(CELL-2)*0.5,5); ctx.fill();
+}
+function drawHouseIcon(cx,cy,s,color){
+  ctx.fillStyle=color; const w=s*0.78;
+  ctx.beginPath(); ctx.moveTo(cx,cy-s*0.46); ctx.lineTo(cx+w*0.6,cy-s*0.02); ctx.lineTo(cx-w*0.6,cy-s*0.02); ctx.closePath(); ctx.fill();
+  ctx.fillRect(cx-w*0.42,cy-s*0.02,w*0.84,s*0.42);
+  ctx.fillStyle=HOUSE_COL; ctx.fillRect(cx-s*0.12,cy+s*0.12,s*0.24,s*0.28);
+}
+function drawHouse(now){
+  const p=cellPix(target.x,target.y); const pulse=(now%1400)/1400;
+  ctx.fillStyle="rgba(50,30,90,.20)"; ctx.beginPath(); ctx.ellipse(p.x,p.y+CELL*0.5,CELL*0.5,CELL*0.2,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle="rgba(124,58,237,"+(0.55*(1-pulse))+")"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(p.x,p.y-CELL*0.6,CELL*0.7+pulse*CELL*1.15,0,Math.PI*2); ctx.stroke();
+  const cx=p.x, cyc=p.y-CELL*0.78, R=CELL*0.72;
+  ctx.save(); ctx.shadowColor="rgba(80,40,160,.45)"; ctx.shadowBlur=12; ctx.shadowOffsetY=4;
+  ctx.fillStyle=HOUSE_COL; ctx.beginPath(); ctx.arc(cx,cyc,R,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx-R*0.52,cyc+R*0.5); ctx.lineTo(cx+R*0.52,cyc+R*0.5); ctx.lineTo(cx,cyc+R*1.55); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle="#fff"; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(cx,cyc,R,0,Math.PI*2); ctx.stroke();
+  drawHouseIcon(cx,cyc,R,"#fff");
+}
+function drawPac(x,y,r,dir,chomp,color){
+  const open=(0.06+0.20*Math.abs(Math.sin(chomp/110)))*Math.PI;
+  let ang=0; if(dir[0]===1)ang=0; else if(dir[0]===-1)ang=Math.PI; else if(dir[1]===1)ang=Math.PI/2; else if(dir[1]===-1)ang=-Math.PI/2;
+  ctx.save(); ctx.fillStyle=color;
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.arc(x,y,r,ang+open,ang-open+Math.PI*2); ctx.closePath(); ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle="rgba(20,30,60,.55)"; ctx.stroke(); ctx.restore();
+}
+function drawGhost(x,y,r,color){
+  const bottom=y+r*0.92;
+  ctx.save(); ctx.fillStyle=color;
+  ctx.beginPath(); ctx.arc(x,y-r*0.1,r,Math.PI,0,false); ctx.lineTo(x+r,bottom);
+  const n=4;
+  for(let i=0;i<n;i++){ const x1=x+r-(2*r)*((i+0.5)/n), x2=x+r-(2*r)*((i+1)/n); const yy=(i%2===0)?bottom-r*0.24:bottom; ctx.quadraticCurveTo(x1,yy,x2,bottom); }
+  ctx.closePath(); ctx.fill();
+  ctx.lineWidth=1.5; ctx.strokeStyle="rgba(20,30,60,.45)"; ctx.stroke();
+  ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(x-r*0.34,y-r*0.12,r*0.26,0,Math.PI*2); ctx.arc(x+r*0.34,y-r*0.12,r*0.26,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="#1f2a44"; ctx.beginPath(); ctx.arc(x-r*0.30,y-r*0.08,r*0.12,0,Math.PI*2); ctx.arc(x+r*0.38,y-r*0.08,r*0.12,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+function drawEntity(e){
+  const p=entPix(e), r=CELL*0.42;
+  if(e.type==="player") drawPac(p.x,p.y,r,e.dir,e.chomp,e.color); else drawGhost(p.x,p.y,r,e.color);
+}
+function drawHouseIndicator(){
+  const hp=cellPix(target.x,target.y); const sx=hp.x-camX, sy=hp.y-camY, m=44;
+  if(sx>=m&&sx<=VW-m&&sy>=m&&sy<=VH-m) return;
+  const cx=VW/2, cy=VH/2, dx=sx-cx, dy=sy-cy;
+  const ix=VW/2-m, iy=VH/2-m, sc=Math.min(ix/Math.max(1,Math.abs(dx)), iy/Math.max(1,Math.abs(dy)));
+  const ex=cx+dx*sc, ey=cy+dy*sc, ang=Math.atan2(dy,dx);
+  const dist=Math.round(Math.hypot(target.x-player.cellX, target.y-player.cellY));
+  ctx.save(); ctx.translate(ex,ey);
+  ctx.save(); ctx.rotate(ang); ctx.fillStyle=HOUSE_COL;
+  ctx.beginPath(); ctx.moveTo(28,0); ctx.lineTo(15,-9); ctx.lineTo(15,9); ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.shadowColor="rgba(31,42,68,.25)"; ctx.shadowBlur=8; ctx.shadowOffsetY=2;
+  ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fillStyle="#fff"; ctx.fill();
+  ctx.shadowBlur=0; ctx.shadowOffsetY=0; ctx.lineWidth=2.5; ctx.strokeStyle=HOUSE_COL; ctx.stroke();
+  drawHouseIcon(0,-1,12,HOUSE_COL);
+  ctx.fillStyle=HOUSE_COL; ctx.font="11px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText(dist+"m",0,27); ctx.restore();
+}
+function render(now){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle="#eef2f9"; ctx.fillRect(0,0,VW,VH);
+  const pc=entPix(player); camX=pc.x-VW/2; camY=pc.y-VH/2;
+  ctx.save(); ctx.translate(-camX,-camY);
+  const c0=Math.floor(camX/CELL), c1=Math.ceil((camX+VW)/CELL);
+  const r0=Math.floor(camY/CELL), r1=Math.ceil((camY+VH)/CELL);
+  ctx.fillStyle="rgba(31,42,68,.06)";
+  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++) if(isPath(c,r)) ctx.fillRect(c*CELL+CELL/2-1,r*CELL+CELL/2-1,2,2);
+  for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++) if(!isPath(c,r)) drawBlock(c,r,isWord(c,r));
+  if(target) drawHouse(now);
+  for(const e of entities) drawEntity(e);
+  ctx.restore();
+  if(target) drawHouseIndicator();
+}
+
+/* ============ leaderboard ============ */
+function updateHUD(){
+  const rows=[{name:"شما",type:"player",color:COLORS.player},
+              ...AGENTS.map(a=>({name:a.name,type:a.type,color:COLORS[a.type]}))];
+  rows.sort((a,b)=>scores[b.type]-scores[a.type]);
+  let html='<div class="hdr">🏆 Leaderboard</div>';
+  for(const r of rows){
+    html += '<div class="lbrow'+(r.type==="player"?' me':'')+'">'+
+            '<span class="lbdot" style="color:'+r.color+';background:'+r.color+'"></span>'+
+            '<span class="lbname">'+r.name+'</span>'+
+            '<span class="lbval">'+scores[r.type]+'</span></div>';
+  }
+  document.getElementById("lb").innerHTML=html;
+}
+
+/* ============ loop ============ */
+function loop(now){
+  if(!lastFrame) lastFrame=now;
+  let dt=now-lastFrame; lastFrame=now; if(dt>60)dt=60;
+  update(dt); render(now);
+  requestAnimationFrame(loop);
+}
+
+/* ============ init / restart ============ */
+function init(){
+  SEED=(Math.random()*2147483647)|0; blockCache.clear();
+  const d=blockWord(0,0);
+  let sx=d.lx+Math.floor(d.w/2), sy=d.ly+d.h+2;
+  if(!isPath(sx,sy)){ const o=nearestOpen(sx,sy); sx=o.x; sy=o.y; }
+  entities=null;
+  player=makeEntity(sx,sy,"player",null);
+  entities=[player];
+  agents=AGENTS.map(cfg=>makeEntity(0,0,cfg.type,cfg.algo));
+  const n=agents.length;
+  agents.forEach((a,i)=>{ const p=spawnNear(sx,sy,i*(Math.PI*2/n),8,14); a.cellX=p.x;a.cellY=p.y;a.nx=p.x;a.ny=p.y; });
+  entities=[player,...agents];
+  scores={player:0}; for(const c of AGENTS) scores[c.type]=0;
+  targetVersion=0; recomputeCursor=0; stepping=false; stepT=0; lastFrame=0;
+  spawnHouse(); updateHUD();
+}
+
+/* ============ input ============ */
+const KEYMAP={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],
+  w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],W:[0,-1],S:[0,1],A:[-1,0],D:[1,0]};
+window.addEventListener("keydown",ev=>{
+  if(ev.key==="r"||ev.key==="R"){ init(); return; }
+  const m=KEYMAP[ev.key];
+  if(m){ ev.preventDefault(); if(player) player.want=m; }
+});
+document.getElementById("restart").addEventListener("click",init);
+
+resize();
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
