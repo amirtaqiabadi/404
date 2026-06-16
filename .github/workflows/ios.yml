@@ -1,0 +1,57 @@
+name: Build iOS App
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Capacitor
+        run: npx cap sync ios
+
+      - name: Install CocoaPods
+        run: |
+          cd ios/App
+          pod install
+
+      # Builds an UNSIGNED .app for the simulator. Producing a distributable,
+      # signed .ipa requires an Apple Developer account + signing certificates,
+      # which can't run in plain CI without secrets. See README for that path.
+      - name: Build (unsigned, simulator)
+        run: |
+          cd ios/App
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package .app artifact
+        run: |
+          cd ios/App/build/Build/Products/Debug-iphonesimulator
+          zip -r App-simulator.zip App.app
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-ios-simulator
+          path: ios/App/build/Build/Products/Debug-iphonesimulator/App-simulator.zip
+          if-no-files-found: error

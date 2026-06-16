@@ -1,0 +1,13 @@
+{
+  "appId": "com.bazdid.game404",
+  "appName": "404",
+  "webDir": "www",
+  "backgroundColor": "#eef2f9ff",
+  "android": {
+    "backgroundColor": "#eef2f9ff"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#eef2f9ff"
+  }
+}

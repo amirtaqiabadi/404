@@ -1,39 +1,3 @@
-<!DOCTYPE html>
-<html lang="fa">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>404</title>
-<style>
-  *{box-sizing:border-box;}
-  html,body{margin:0;height:100%;overflow:hidden;background:#eef2f9;
-    font-family:'Segoe UI',system-ui,-apple-system,Tahoma,Arial,sans-serif;}
-  canvas{position:fixed;inset:0;display:block;}
-  #lb{position:fixed;top:14px;right:14px;z-index:3;display:flex;flex-direction:column;gap:2px;
-      min-width:150px;pointer-events:none;}
-  #lb .hdr{display:flex;justify-content:flex-end;align-items:center;gap:6px;
-      font-size:11px;letter-spacing:.16em;color:#475569;text-transform:uppercase;margin-bottom:3px;
-      text-shadow:0 0 4px #fff,0 1px 2px #fff;}
-  .lbrow{display:flex;align-items:center;gap:8px;padding:2px 6px;border-radius:8px;transition:.2s;}
-  .lbrow.me{background:rgba(37,99,235,.08);}
-  .lbrow.me .lbname,.lbrow.me .lbval{font-weight:800;}
-  .lbdot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 6px currentColor;flex:none;}
-  .lbname{flex:1;font-size:13px;color:#1f2a44;text-shadow:0 0 4px #fff,0 1px 2px #fff;white-space:nowrap;}
-  .lbval{font-size:14px;font-weight:700;color:#1f2a44;text-shadow:0 0 4px #fff,0 1px 2px #fff;
-      font-variant-numeric:tabular-nums;}
-  #restart{position:fixed;top:14px;left:14px;z-index:3;width:40px;height:40px;border-radius:11px;
-      border:1px solid rgba(31,42,68,.14);background:rgba(255,255,255,.55);backdrop-filter:blur(5px);
-      color:#1f2a44;font-size:18px;line-height:1;cursor:pointer;transition:.15s;}
-  #restart:hover{background:#fff;color:#2563eb;}
-  #restart:focus-visible{outline:2px solid #2563eb;outline-offset:2px;}
-</style>
-</head>
-<body>
-  <canvas id="cv"></canvas>
-  <button id="restart" title="Restart (R)">⟳</button>
-  <div id="lb"></div>
-
-<script>
 "use strict";
 /* ============ config ============ */
 const CELL = 20;
@@ -458,18 +422,47 @@ function init(){
 }
 
 /* ============ input ============ */
+const DIRS = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
+function setWant(d){ if(player) player.want=d; }
+
+// keyboard (desktop)
 const KEYMAP={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],
   w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],W:[0,-1],S:[0,1],A:[-1,0],D:[1,0]};
 window.addEventListener("keydown",ev=>{
   if(ev.key==="r"||ev.key==="R"){ init(); return; }
   const m=KEYMAP[ev.key];
-  if(m){ ev.preventDefault(); if(player) player.want=m; }
+  if(m){ ev.preventDefault(); setWant(m); }
 });
 document.getElementById("restart").addEventListener("click",init);
+
+// on-screen d-pad (touch)
+const pad=document.getElementById("pad");
+const isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints>0);
+if(isTouch) pad.classList.add("show");
+pad.querySelectorAll(".pad-btn").forEach(btn=>{
+  const dir=DIRS[btn.dataset.dir];
+  const press=ev=>{ ev.preventDefault(); setWant(dir); };
+  btn.addEventListener("touchstart",press,{passive:false});
+  btn.addEventListener("mousedown",press);
+});
+
+// swipe gestures on the canvas
+let touchStart=null;
+const SWIPE_MIN=24; // px threshold before a swipe registers
+cv.addEventListener("touchstart",ev=>{
+  const t=ev.changedTouches[0]; touchStart={x:t.clientX,y:t.clientY};
+},{passive:true});
+cv.addEventListener("touchmove",ev=>{ ev.preventDefault(); },{passive:false});
+cv.addEventListener("touchend",ev=>{
+  if(!touchStart) return;
+  const t=ev.changedTouches[0];
+  const dx=t.clientX-touchStart.x, dy=t.clientY-touchStart.y;
+  touchStart=null;
+  if(Math.abs(dx)<SWIPE_MIN && Math.abs(dy)<SWIPE_MIN) return;
+  if(Math.abs(dx)>Math.abs(dy)) setWant(dx>0?DIRS.right:DIRS.left);
+  else setWant(dy>0?DIRS.down:DIRS.up);
+},{passive:true});
 
 resize();
 init();
 requestAnimationFrame(loop);
-</script>
-</body>
-</html>
